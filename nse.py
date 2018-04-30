@@ -364,15 +364,3 @@ def plot_symbol(df, symbol, fig=None, color=None):
 # plt.grid(True, which="both")
 # plt.show()
 #
-#
-# df_index = pd.read_csv('data_NSEIndex.csv')
-# df_index['Index Date'] = pd.to_datetime(df_index['Index Date'], format='%d-%m-%Y')
-# df_index.sort_values(by=['Index Name','Index Date'], inplace=True)
-#
-# mask = (df_index['Index Name'] == 'Nifty 500')
-# x = df_index.loc[mask,'Index Date']
-# y = df_index.loc[mask,'Closing Index Value']
-#
-# plt.plot(x,y)
-# plt.show()
-# print(df_nifty50.head())
