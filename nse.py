@@ -72,18 +72,20 @@ def download_NSEdata(df=None,url=url_NSE(pd.Timestamp('today')),save_path=None,d
             df.to_csv(save_path, encoding='utf-8', index=False)
 
         print("Saved data for: %s" %(date))
+        downloaded = True
 
     except:
-        print("No data for :::::::::::: %s" %(date))
+        print("!! No data for: %s" %(date))
+        downloaded = False
 
-    return df
+    return df, downloaded
 
 # ---------------------------------------------------------------------------- #
 def download_NSEIndex_as_csv(df=None,save_path='NSEIndex_Data.csv',num_days_back=365):
 
     for d in range(num_days_back):
-        offset_date = ( - pd.DateOffset(days=d))
-        df = download_NSEdata(df, url_NSEIndex(offset_date), save_path, offset_date, True)
+        offset_date = (pd.Timestamp('today') - pd.DateOffset(days=d))
+        df, _ = download_NSEdata(df, url_NSEIndex(offset_date), save_path, offset_date, True)
 
     return df
 
@@ -93,7 +95,7 @@ def update_NSEIndex(NSE_data_path, save_path=None, max_days_back=30):
     if save_path == None:
         save_path=NSE_data_path
 
-    downloaded = False
+    downloaded = None
 
     df = pd.read_csv(NSE_data_path)
     # Get the last date avaiable in the previous data
@@ -106,10 +108,11 @@ def update_NSEIndex(NSE_data_path, save_path=None, max_days_back=30):
             print('Last date of data reached.')
             break
 
-        df = download_NSEdata(df, url_NSEIndex(offset_date), date=offset_date, len_check=True)
-        downloaded = True
+        df, data_downloaded = download_NSEdata(df, url_NSEIndex(offset_date), date=offset_date, len_check=True)
+        # If data_downloaded == True even once then set downloaded = True
+        downloaded = downloaded or data_downloaded
 
-    # Save data once and if everything is downloaded
+    # Save data if something has been downloaded
     if downloaded: df.to_csv(save_path, encoding='utf-8', index=False)
 
     return df
@@ -118,7 +121,7 @@ def download_NSE_as_csv(df=None,save_path='NSE_Data.csv',num_days_back=365):
 
     for d in range(num_days_back):
         offset_date = (pd.Timestamp('today') - pd.DateOffset(days=d))
-        df = download_NSEdata(df, url_NSE(offset_date), save_path, offset_date)
+        df, _ = download_NSEdata(df, url_NSE(offset_date), save_path, offset_date)
 
     return df
 # ---------------------------------------------------------------------------- #
@@ -127,7 +130,7 @@ def update_NSE(NSE_data_path, save_path=None, max_days_back=30):
     if save_path == None:
         save_path=NSE_data_path
 
-    downloaded = False
+    downloaded = None
 
     df = pd.read_csv(NSE_data_path)
     # Get the last date avaiable in the previous data
@@ -140,10 +143,11 @@ def update_NSE(NSE_data_path, save_path=None, max_days_back=30):
             print('Last date of data reached.')
             break
 
-        df = download_NSEdata(df, url_NSE(offset_date), date=offset_date)
-        downloaded = True
+        df, data_downloaded = download_NSEdata(df, url_NSE(offset_date), date=offset_date)
+        # If data_downloaded == True even once then set downloaded = True
+        downloaded = downloaded or data_downloaded
 
-    # Save data once and if everything is downloaded
+    # Save data if something has been downloaded
     if downloaded: df.to_csv(save_path, encoding='utf-8', index=False)
 
     return df
@@ -190,12 +194,16 @@ def fix_stockSplits(df, df_splits, tol=0.33):
         previous_faceValue = df_splits['Previous Face Value(Rs.)'].loc[n]
         date_executed = df_splits['Ex-Date'].loc[n]
         ratio = faceValue / previous_faceValue
+        # Work with ISIN number to overcome issues over series type change
+        mask_isin_number = (df['SYMBOL'] == symbol) & (df['SERIES'] == series_type)
+        isin_number = df.loc[mask_isin_number, 'ISIN'].unique()
+        isin_number = isin_number[0]
         # Get the close value on the day of execution
-        mask_t0 = (df['SYMBOL'] == symbol) & (df['date'] == date_executed) & (df['SERIES'] == series_type)
+        mask_t0 = (df['ISIN'] == isin_number) & (df['date'] == date_executed)
         close_t0 = df.loc[mask_t0, 'CLOSE'].values
-        # Get the close value on the previous market open day
+        # Get the close value on the previous market open day taking into account closed market days upto 14 days back
         for d in range(14):
-            mask_t1 = (df['SYMBOL'] == symbol) & (df['date'] == date_executed - pd.DateOffset(days=d+1)) & (df['SERIES'] == series_type)
+            mask_t1 = (df['ISIN'] == isin_number) & (df['date'] == date_executed - pd.DateOffset(days=d+1))
             close_t1 = df.loc[mask_t1, 'CLOSE'].values
             if close_t1:
                 break
@@ -204,14 +212,14 @@ def fix_stockSplits(df, df_splits, tol=0.33):
         # If there is % diff greater than the tolerance then adjust data for stock splits
         if np.abs((close_t1 - close_t0)/close_t1) > tol:
             df.loc[mask_t0, 'PREVCLOSE'] = ratio * df.loc[mask_t0, 'PREVCLOSE']
-            mask = (df['SYMBOL'] == symbol) & (df['date'] < date_executed) & (df['SERIES'] == series_type)
+            mask = (df['ISIN'] == isin_number) & (df['date'] < date_executed)
             df.loc[mask, ['OPEN','CLOSE','LOW','HIGH','LAST','PREVCLOSE']] = ratio * df.loc[mask, ['OPEN','CLOSE','LOW','HIGH','LAST','PREVCLOSE']]
             df.loc[mask, ['TOTTRDQTY']] = (1.0/ratio) * df.loc[mask, ['TOTTRDQTY']]
         else:
             print('Failed for %s on %s' %(symbol, date_executed.date()))
 
     # Plots a graph when finished to see whether the end result is fine
-    # df_symbol = df[df['SYMBOL'] == symbol]
+    # df_symbol = df[df['ISIN'] == isin_number]
     # x = df_symbol['date']
     # y = df_symbol['CLOSE']
     # plt.figure()
@@ -228,20 +236,24 @@ def fix_dividends(df, df_divs, tol=0.33):
 
     for n in range(num_divs):
         symbol = df_divs['Symbol'].loc[n]
+        series_type = df_divs['Series'].loc[n]
         date_executed = df_divs['Ex-Date'].loc[n]
         s = df_divs['Purpose'].loc[n]
         m = re.findall(r'-?\d+\.?\d*',s)
-        series_type = df_divs['Series'].loc[n]
         # Currently assuming dividend is the largest number and is per share
         if not m:
             print('Failed for %s on %s because %s' %(symbol, date_executed.date(), 'dividend amount not specified!'))
             continue
         dividend = max([float(i) for i in m])
+        # Work with ISIN number to overcome issues over series type change
+        mask_isin_number = (df['SYMBOL'] == symbol) & (df['SERIES'] == series_type)
+        isin_number = df.loc[mask_isin_number, 'ISIN'].unique()
+        isin_number = isin_number[0]
         # Get the close value on the day of execution
-        mask_t0 = (df['SYMBOL'] == symbol) & (df['date'] == date_executed) & (df['SERIES'] == series_type)
+        mask_t0 = (df['ISIN'] == isin_number) & (df['date'] == date_executed)
         close_t0 = df.loc[mask_t0, 'CLOSE'].values
         for d in range(14):
-            mask_t1 = (df['SYMBOL'] == symbol) & (df['date'] == date_executed - pd.DateOffset(days=d+1)) & (df['SERIES'] == series_type)
+            mask_t1 = (df['ISIN'] == isin_number) & (df['date'] == date_executed - pd.DateOffset(days=d+1))
             close_t1 = df.loc[mask_t1, 'CLOSE'].values
             if len(close_t1) > 1:
                 e = 'multiple Symbols with the same name found'
@@ -261,12 +273,13 @@ def fix_dividends(df, df_divs, tol=0.33):
         if np.abs((close_t1 - close_t0)/close_t1) < tol:
             ratio = (close_t0 - dividend)/close_t0
             df.loc[mask_t0, 'PREVCLOSE'] = ratio * df.loc[mask_t0, 'PREVCLOSE']
-            mask = (df['SYMBOL'] == symbol) & (df['date'] < date_executed) & (df['SERIES'] == series_type)
+            mask = (df['ISIN'] == isin_number) & (df['date'] < date_executed)
             df.loc[mask, ['OPEN','CLOSE','LOW','HIGH','LAST','PREVCLOSE','TOTTRDVAL']] = ratio * df.loc[mask, ['OPEN','CLOSE','LOW','HIGH','LAST','PREVCLOSE','TOTTRDVAL']]
         else:
             print('Failed for %s on %s because %s' %(symbol, date_executed.date(), e))
+
     # Plots a graph when finished to see whether the end result is fine
-    # df_symbol = df[df['SYMBOL'] == symbol]
+    # df_symbol = df[df['ISIN'] == isin_number]
     # x = df_symbol['date']
     # y = df_symbol['CLOSE']
     # plt.figure()
@@ -294,7 +307,12 @@ def plot_symbol(df, symbol, fig=None, color=None):
     else:
         plt.figure(fig.number)
 
-    mask = df['SYMBOL'] == symbol
+    # Work with ISIN number to overcome issues over series type change
+    mask_isin_number = (df['SYMBOL'] == symbol)
+    isin_number = df.loc[mask_isin_number, 'ISIN'].unique()
+    isin_number = isin_number[0]
+
+    mask = df['ISIN'] == isin_number
     x = df.loc[mask,'date']
     y = df.loc[mask,'CLOSE']
     if color is None:
@@ -316,16 +334,16 @@ def plot_symbol(df, symbol, fig=None, color=None):
 # download_NSEIndex_as_csv(save_path='data_NSEIndex.csv')
 #
 # ### UPDATE PREVIOUSLY DOWNLOADED NSE DATA ###
-# update_NSE('data_NSE.csv')
+update_NSE('data_NSEdivfixed.csv')
 # update_NSEIndex('data_NSEIndex.csv')
 #
 # ### DOWNLOAD SPLIT DATA AND UPDATE THE NSE FILE ###
 # url_split = 'https://www.nseindia.com/corporates/datafiles/CA_LAST_12_MONTHS_SPLIT.csv'
 # # Download new split data
-# # df_splits = download_NSEdata(url=url_split, save_path='data_stockSplits.csv')
+# # df_splits, _ = download_NSEdata(url=url_split, save_path='data_stockSplits.csv')
 # # Update previously downloaded split data
 # df_splits = pd.read_csv('data_stockSplits.csv')
-# df_splits = download_NSEdata(df=df_splits, url=url_split, save_path='data_stockSplits.csv')
+# df_splits, _ = download_NSEdata(df=df_splits, url=url_split, save_path='data_stockSplits.csv')
 # # Compute stock split previous face value
 # df_splits = add_stockSplitInfo(stockSplit_path='data_stockSplits.csv')
 # df_splits['Ex-Date'] = pd.to_datetime(df_splits['Ex-Date'], format='%d-%b-%Y')
@@ -339,10 +357,10 @@ def plot_symbol(df, symbol, fig=None, color=None):
 # ### DOWNLOAD DIVIDEND DATA AND UPDATE THE NSE FILE ###
 # url_dividend = 'https://www.nseindia.com/corporates/datafiles/CA_LAST_12_MONTHS_DIVIDEND.csv'
 # # Download a file of dividend data
-# df_dividends = download_NSEdata(url=url_dividend, save_path='data_stockDividends.csv')
+# df_dividends, _ = download_NSEdata(url=url_dividend, save_path='data_stockDividends.csv')
 # # Update previous dividend file
 # df_dividends = pd.read_csv('data_stockDividends.csv')
-# df_dividends = download_NSEdata(df=df_dividends, url=url_dividend, save_path='data_stockDividends.csv')
+# df_dividends, _ = download_NSEdata(df=df_dividends, url=url_dividend, save_path='data_stockDividends.csv')
 # # Format date field for working in DataFrame for dividends
 # df_dividends['Ex-Date'] = pd.to_datetime(df_dividends['Ex-Date'], format='%d-%b-%Y')
 # # Load and fix NSE equity data
