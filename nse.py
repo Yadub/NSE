@@ -300,6 +300,15 @@ def read_NSE(path):
     return df
 
 # ---------------------------------------------------------------------------- #
+def read_NSEIndex(path):
+
+    df_index = pd.read_csv(path)
+    df_index['Index Date'] = pd.to_datetime(df_index['Index Date'], format='%d-%m-%Y')
+    df_index.sort_values(by=['Index Name','Index Date'], inplace=True)
+
+    return df_index
+
+# ---------------------------------------------------------------------------- #
 def plot_symbol(df, symbol, fig=None, color=None):
 
     if fig is None:
@@ -335,7 +344,7 @@ def plot_symbol(df, symbol, fig=None, color=None):
 #
 # ### UPDATE PREVIOUSLY DOWNLOADED NSE DATA ###
 update_NSE('data_NSEdivfixed.csv')
-# update_NSEIndex('data_NSEIndex.csv')
+update_NSEIndex('data_NSEIndex.csv')
 #
 # ### DOWNLOAD SPLIT DATA AND UPDATE THE NSE FILE ###
 # url_split = 'https://www.nseindia.com/corporates/datafiles/CA_LAST_12_MONTHS_SPLIT.csv'
