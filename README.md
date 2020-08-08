@@ -5,7 +5,7 @@
 * screener.py: Downloads industry, sector, marketcap and PE ratios of stocks 
 
 ### Useful Links
-NSE SERIES TYPES: https://www.truedata.in/blog/what-do-the-nse-series-eq-be-bl-bt-gc-il-iq-mean/
+NSE Series Types: https://www.truedata.in/blog/what-do-the-nse-series-eq-be-bl-bt-gc-il-iq-mean/
 
 ### Packages Required
 ###### All files
