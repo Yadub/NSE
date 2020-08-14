@@ -79,7 +79,6 @@ def download_NSEdata(df=None,url=url_NSE(pd.Timestamp('today')),save_path=None,d
         downloaded = False
 
     return df, downloaded
-
 # ---------------------------------------------------------------------------- #
 def download_NSEIndex_as_csv(df=None,save_path='NSEIndex_Data.csv',num_days_back=365):
 
@@ -127,14 +126,14 @@ def download_NSE_as_csv(df=None,save_path='NSE_Data.csv',num_days_back=365):
 # ---------------------------------------------------------------------------- #
 def update_NSE(NSE_data_path, save_path=None, max_days_back=365):
 
-    if save_path == None:
-        save_path=NSE_data_path
-
-    downloaded = None
+    # If no new save path is given then assume the save_path of the original data file
+    if save_path == None: save_path=NSE_data_path
 
     df = pd.read_csv(NSE_data_path)
     # Get the last date avaiable in the previous data
     last_date = max(pd.to_datetime(df['TIMESTAMP'], format='%d-%b-%Y'))
+
+    downloaded = None
 
     for d in range(max_days_back):
         offset_date = (pd.Timestamp('today') - pd.DateOffset(days=(d)))
@@ -151,7 +150,6 @@ def update_NSE(NSE_data_path, save_path=None, max_days_back=365):
     if downloaded: df.to_csv(save_path, encoding='utf-8', index=False)
 
     return df
-
 # ---------------------------------------------------------------------------- #
 def get_num(x):
     return ''.join(ele for ele in x if ele.isdigit())
@@ -208,7 +206,7 @@ def fix_stockSplits(df, df_splits, tol=0.33):
         for d in range(14):
             mask_t1 = (df['ISIN'] == isin_number) & (df['date'] == date_executed - pd.DateOffset(days=d+1))
             close_t1 = df.loc[mask_t1, 'CLOSE'].values
-            if close_t1:
+            if close_t1.size > 0:
                 break
             else:
                 close_t1 = close_t0
@@ -231,7 +229,6 @@ def fix_stockSplits(df, df_splits, tol=0.33):
     # plt.show()
 
     return df
-
 # ---------------------------------------------------------------------------- #
 def fix_dividends(df, df_divs, tol=0.33, display=True):
 
@@ -300,16 +297,16 @@ def fix_dividends(df, df_divs, tol=0.33, display=True):
             if display: print('Failed for %s on %s because %s' %(symbol, date_executed.date(), e))
 
     # Plots a graph when finished to see whether the end result is fine
-    df_symbol = df[df['ISIN'] == isin_number]
-    x = df_symbol['date']
-    y = df_symbol['CLOSE']
-    plt.figure()
-    plt.plot(x,y)
-    plt.title(symbol)
-    plt.show()
+    # if display:
+    #     df_symbol = df[df['ISIN'] == isin_number]
+    #     x = df_symbol['date']
+    #     y = df_symbol['CLOSE']
+    #     plt.figure()
+    #     plt.plot(x,y)
+    #     plt.title(symbol)
+    #     plt.show()
 
     return df
-
 # ---------------------------------------------------------------------------- #
 def read_NSE(path):
     df = pd.read_csv(path)
@@ -319,7 +316,6 @@ def read_NSE(path):
     df.sort_values(by=['SYMBOL','date'], inplace=True)
 
     return df
-
 # ---------------------------------------------------------------------------- #
 def read_NSEIndex(path):
 
@@ -328,14 +324,15 @@ def read_NSEIndex(path):
     df_index.sort_values(by=['Index Name','Index Date'], inplace=True)
 
     return df_index
-
 # ---------------------------------------------------------------------------- #
-def plot_symbol(df, symbol, fig=None, color=None):
+def plot_symbol(df, symbol, fig=None, color=None, symbol_name=None, linestyle='solid'):
 
     if fig is None:
         fig = plt.figure()
     else:
         plt.figure(fig.number)
+
+    if symbol_name==None: symbol_name = symbol
 
     # Work with ISIN number to overcome issues over series type change
     mask_isin_number = (df['SYMBOL'] == symbol)
@@ -346,11 +343,10 @@ def plot_symbol(df, symbol, fig=None, color=None):
     x = df.loc[mask,'date']
     y = df.loc[mask,'CLOSE']
     if color is None:
-        plt.semilogy(x,y,label=symbol)
+        plt.semilogy(x,y,label=symbol_name,linestyle=linestyle)
     else:
-        plt.semilogy(x,y,color=color,label=symbol)
+        plt.semilogy(x,y,color=color,label=symbol_name, linestyle=linestyle)
 
-    plt.legend('show')
     plt.xlabel('date')
     plt.ylabel('Close Price')
     plt.gca().yaxis.set_minor_formatter(ticker.FormatStrFormatter("%.0f"))
@@ -359,13 +355,17 @@ def plot_symbol(df, symbol, fig=None, color=None):
     return fig
 # ---------------------------------------------------------------------------- #
 if __name__ == "__main__":
+
+    data_stock_file_path = './data/data_NSE.csv'
+    data_index_file_path = './data/data_NSEIndex.csv'
     ### DOWNLOAD NSE DATA FOR THE FIRST TIME ###
-    # download_NSE_as_csv(save_path='data_NSE.csv')
-    # download_NSEIndex_as_csv(save_path='data_NSEIndex.csv')
+    # download_NSE_as_csv(save_path=data_stock_file_path)
+    # download_NSEIndex_as_csv(save_path=data_index_file_path)
     #
     ## UPDATE PREVIOUSLY DOWNLOADED NSE DATA ###
-    update_NSE('./data/data_NSE.csv')
-    update_NSEIndex('./data/data_NSEIndex.csv')
+    update_NSE(data_stock_file_path)
+    update_NSEIndex(data_index_file_path)
+
     ### DOWNLOAD SPLIT DATA AND UPDATE THE NSE FILE ###
     url_split = 'https://www1.nseindia.com/corporates/datafiles/CA_LAST_12_MONTHS_SPLIT.csv'
     # df_splits, _ = download_NSEdata(url=url_split, save_path='./data/data_stockSplits.csv')
@@ -376,7 +376,7 @@ if __name__ == "__main__":
     df_splits = add_stockSplitInfo(stockSplit_path='./data/data_stockSplits.csv')
     df_splits['Ex-Date'] = pd.to_datetime(df_splits['Ex-Date'], format='%d-%b-%Y')
     # Load NSE data and fix it for stock splits
-    df = read_NSE('./data/data_NSE.csv')
+    df = read_NSE(data_stock_file_path)
     df = fix_stockSplits(df, df_splits)
     # Drop working date column from NSE data and save it
     df.drop(columns=['date'],inplace=True)
@@ -402,11 +402,12 @@ if __name__ == "__main__":
     symbol = 'PERSISTENT'
     # Plot div fixed data
     df = read_NSE('./data/data_NSEallfixed.csv')
-    fig = plot_symbol(df, symbol, fig=None, color='b')
+    fig = plot_symbol(df, symbol, fig=None, color='b', symbol_name='Fixed Symbol')
     # Plot only stock split fixed data
-    df = read_NSE('./data/data_NSE.csv')
-    fig = plot_symbol(df, symbol, fig, color='r')
+    df = read_NSE(data_stock_file_path)
+    fig = plot_symbol(df, symbol, fig, color='r', symbol_name='Unfixed Symbol', linestyle='dashed')
     # Add grid and show
     plt.grid(True, which="both")
+    plt.legend(loc='upper left')
+    plt.title(symbol)
     plt.show()
-    #
