@@ -14,7 +14,7 @@ def load_symbol_page(symbol):
     url = "https://www.screener.in/company/" + symbol + "/"
     r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'})
     if r.status_code != 404:
-        soup = BeautifulSoup(r.content)
+        soup = BeautifulSoup(r.content, features="html.parser")
     else:
         soup = None
     return soup
