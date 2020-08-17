@@ -73,7 +73,7 @@ def download_screener_data(symbols, file_save_dir=None):
     if file_save_dir is None: file_save_dir = "./"
     file_save_path = file_save_dir + "data_screener_" + today_date_str + ".csv"
     """
-    TODO: Fix date of screener data based on previous market close information
+        TODO: Fix date of screener data based on previous market close information
     """
     df.to_csv(file_save_path, index=False)
     return df
@@ -84,7 +84,7 @@ if __name__ == "__main__":
     data_file_dir = './data/screener/'
     # Load data with list of symbols
     """
-    TODO: Automate fetching all symbols available on screener.in
+        TODO: Automate fetching all symbols available on screener.in
     """
     df = nse.read_NSE('./data/data_NSEallfixed.csv')
     symbols = df.SYMBOL.unique()
